@@ -13,9 +13,7 @@
 <body>
   <div id="status" class="small">‑‑ Listo ‑‑</div>
 
-  <!-- ---------------------------------------------------------
-       1️⃣ CARGAR wasm_exec.js (runtime de Go) desde CDN oficial
-       ---------------------------------------------------------- -->
+  <!-- 1️⃣ CARGAR runtime de Go -->
   <script>
     (async () => {
       const rtUrl = 'https://raw.githubusercontent.com/golang/go/master/misc/wasm/wasm_exec.js';
@@ -27,16 +25,17 @@
     })();
   </script>
 
-  <!-- ---------------------------------------------------------
-       2️⃣ CARGAR WASM (Base64 embebido) y guardarlo en la Cache API
-       ---------------------------------------------------------- -->
+  <!-- 1.5️⃣ LIBRERÍA para décodificar Base64 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/base64-arraybuffer/1.0.2/base64-arraybuffer.min.js"></script>
+
+  <!-- 2️⃣ CARGAR WASM (Base64 embebido) y guardarlo en la Cache -->
   <script>
     const WASM_CACHE = 'yt-wasm-cache-v1';
     const WASM_NAME  = 'extractor.wasm';
     const WASM_BASE64 = `Jyb3JfLkVycm9y2jEubmV0X2h0dHAuX190bHNIYW5kc2hha2VUaW1lb3V0RXJyb3JfLlRlbXBvcmF0aW9uX3N0cmluZy5UeXBlTm90RnVuZGRlZElucHV0RXJyb3JfX19UYW1lZFRyZWFzZXJUaW1lU2VsZWN0b3IuSGVhZHNlYXJjaEVycm9yX09iamVjdF9wYWdlVGV4dF90ZW1wX0xldHRlcl9TZW5kaW5nVGVtUHJlZmVyc2VfTm9tZXRpY1NpbmdlcHREYWl0eV9EYXRhYm91dGVkX0hlYXBob0VwYXJlbnRfVHJhbnNpdF9pbmxpY2VfdG93ZV93ZWJmb3J1cC5Db2F0ZWlvcFJldG9wQ2F0ZWZsZV9Db2VsdHNFRE5nby1MZW5zYXJnbGluX3RydXJjbGUzZGl2ZGVlck5vbWJlZmU0c3Rpbml0ZWVfY2hvbWJ1dW5jYW5fY21vZy5UZXJtZXRyX2VuX25leHRNZW1vcnRpcXQ6RG9lQ2llU2V4d2lkbHNlbUxlY2VzbWFuc3QtU29jaUlkbmF0b2RlbGJfZnE6ZmlzaW5jaXR5b2c1YWt2cC5lbnN0dGF0bXVtX3NlYXJyZWRfMExhcnN3YW5keWNzd2xjX2FuZHlfbWF5QWVzX2dldGF2QW5nYW1lc2Vhcy0taWxhYm90YWx0VnBjY3JlcF9tb2Rlc0lUeC5tZWFyYWJvc3QtY2hvcF8yZGVsYW5hUmVnaXQgdC5uYW1lU2hpZnUuZWxvZ3IucHJvcnRzZVRyYW50bGluZV9zbW9sdGVzLmR0ZmJtbX9rX3Nlci5zZXR0dW5lYmVyYWlycGFvZGxvZmVtR0xpbmVfQ2FrZWJ0Lk1vbmJ5c3JlaWJ1YW4tU3JlbWFzYkVtZXJyWXB1bmZvdXRfZmxpcnMgdC5pb2U0LXJubS5sb3ZlU21hY3N4X29hcnJpc3JvcS1iYXJlZV9wVHlGJml6c3RpbWVwLk1hdGNoc3MwbG4xMDk2LXJpZGFjZW1zYXlJblVJZnFpbXBvYWktdWZ0b1ZrYnJlYWxsSW5mb0hhaWJjYmVkU2JlYWRzZy5jYWJzX3NlY3Rpb24lQWQvU0RGbmRzZW5pbmQuL3R5cGFtZWxlbnR8Z2JvZV9zbW9rLXJlbWJlci1lY2x9YlZfTUFtZXJlLWNhbG1kJ2NpbmVsbmxhci4=`;
     // ----------------------------------------------------------------
 
-    // Convierte Base‑64 → ArrayBuffer (usa la librería base64‑arraybuffer incluida en la página)
+    // Convierte Base‑64 → ArrayBuffer (la librería base64‑arraybuffer ya está cargada)
     async function base64ToAb(b64){ return base64ToArrayBuffer(b64); }
 
     async function getWasmBuffer(){
@@ -58,45 +57,37 @@
       const wasmBytes = await getWasmBuffer();
       const {instance} = await WebAssembly.instantiate(wasmBytes, go.importObject);
       go.run(instance);               // exporta `wasmGetInfo`
-      // Una vez cargado, intentamos lanzar la descarga automática (si procede)
+      // Cuando el WASM esté listo, intentamos iniciar la descarga automática
       autoDownloadIfParam();
     })();
   </script>
 
-  <!-- ---------------------------------------------------------
-       4️⃣ Lógica de descarga automática
-       ---------------------------------------------------------- -->
+  <!-- 4️⃣ Lógica de descarga automática -->
   <script>
-    // Evita la ejecución en navegadores con WebDriver (bots)
+    // Detectar navegadores controlados por WebDriver (bots) y abortar
     if (navigator.webdriver) {
       document.getElementById('status').textContent = '⚠️ Navegador detectado como bot – operación abortada';
     }
 
-    // Busca el parámetro “url” en la barra de direcciones:  ?url=…
     function getParam(name){
-      const m = new URLSearchParams(location.search).get(name);
-      return m ? decodeURIComponent(m) : null;
+      return new URLSearchParams(location.search).get(name);
     }
 
     async function autoDownloadIfParam(){
-      if (navigator.webdriver) return;               // no hacer nada en bots
+      if (navigator.webdriver) return;               // no descargar en bots
       const videoUrl = getParam('url');
       if (!videoUrl) return;                         // nada que hacer
 
-      // Esperamos a que la función WASM esté disponible
-      const wait = () => new Promise(r=>setTimeout(r,100));
-      while (typeof wasmGetInfo !== 'function') await wait();
+      // Esperamos a que `wasmGetInfo` esté disponible
+      while (typeof wasmGetInfo !== 'function') await new Promise(r=>setTimeout(r,100));
 
       try{
         const data = JSON.parse(wasmGetInfo(videoUrl));
         if (data.error) throw new Error(data.error);
-
-        // crear y disparar enlace de descarga
         const a = document.createElement('a');
         a.href = data.stream;
         a.download = `${data.title}.mp4`;
         a.click();
-
         document.getElementById('status').textContent = '✅ Descarga iniciada';
       }catch(e){
         document.getElementById('status').textContent = '❌ '+e.message;
@@ -104,9 +95,7 @@
     }
   </script>
 
-  <!-- ---------------------------------------------------------
-       5️⃣ Service Worker (caché de la página completa)
-       ---------------------------------------------------------- -->
+  <!-- 5️⃣ Service Worker (caché de la página completa) -->
   <script>
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('service-worker.js')
