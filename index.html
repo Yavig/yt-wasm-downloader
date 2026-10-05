@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>YT‑WASM‑Downloader (solo una línea)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{font-family:sans-serif;background:#fafafa;padding:2rem;max-width:500px;margin:auto}
+    .msg{font-size:.9rem;color:#555;margin-top:1rem}
+  </style>
+</head>
+<body>
+  <div id="msg" class="msg">‑‑ Listo ‑‑</div>
+
+  <!-- 1️⃣ Go runtime (wasm_exec.js) – CDN -->
+  <script src="https://cdn.jsdelivr.net/gh/golang/go@go1.22.0/misc/wasm/wasm_exec.js"></script>
+  <script>console.log('✅ wasm_exec.js cargado (CDN)');</script>
+
+  <!-- 2️⃣ No base64, cargamos el WASM directamente -->
+  <script>
+    const WASM_URL = './extractor.wasm';          // archivo colocado junto a index.html
+    const CACHE_NAME = 'yt-wasm-cache-v2';
+
+    // Carga (con caché) del archivo .wasm
+    async function loadWasm(){
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(WASM_URL);
+      if (cached){
+        console.log('🗄️ WASM encontrado en caché');
+        return cached.arrayBuffer();
+      }
+      console.log('⚙️ Descargando WASM desde el servidor');
+      const response = await fetch(WASM_URL);
+      if (!response.ok){
+        throw new Error(`No se pudo cargar el WASM: HTTP ${response.status}`);
+      }
+      const wasmAb = await response.arrayBuffer();
+      // Guardamos una copia en la cache para próximas visitas
+      await cache.put(WASM_URL, new Response(wasmAb.slice(0), {headers:{'Content-Type':'application/wasm'}}));
+      console.log('✅ WASM descargado y guardado en caché');
+      return wasmAb;
+    }
+
+    // Instancia Go + WASM y, cuando esté listo, ejecuta la descarga automática
+    (async () => {
+      const go = new Go();
+      const wasmBytes = await loadWasm();
+      const {instance} = await WebAssembly.instantiate(wasmBytes, go.importObject);
+      go.run(instance); // expone wasmGetInfo
+      console.log('🚀 WASM instanciado y Go runtime ejecutado');
+      autoDownloadIfParam();
+    })();
+
+    // -------------------------------------------------
+    // Descarga automática cuando la página recibe ?url=…
+    // -------------------------------------------------
+    async function autoDownloadIfParam(){
+      if (navigator.webdriver) return; // bloquear bots
+      const videoUrl = new URLSearchParams(location.search).get('url');
+      if (!videoUrl) return; // nada que procesar
+
+      // Esperamos a que la función exportada exista
+      while (typeof wasmGetInfo !== 'function') await new Promise(r=>setTimeout(r,50));
+
+      try{
+        const info = JSON.parse(wasmGetInfo(videoUrl));
+        if (info.error) throw new Error(info.error);
+        const a = document.createElement('a');
+        a.href = info.stream;
+        a.download = `${info.title}.mp4`;
+        a.click();
+        document.getElementById('msg').textContent = '✅ Descarga iniciada';
+        console.log('✅ Descarga disparada para', videoUrl);
+      }catch(e){
+        document.getElementById('msg').textContent = '❌ '+e.message;
+        console.error('❌ Error en autoDownloadIfParam():', e);
+      }
+    }
+  </script>
+</body>
+</html>
