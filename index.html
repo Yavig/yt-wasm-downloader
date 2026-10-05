@@ -13,16 +13,33 @@
   <div id="msg" class="msg">‑‑ Listo ‑‑</div>
 
   <!-- -------------------------------------------------
-       1️⃣ Go runtime (wasm_exec.js) – **cargado desde CDN**
+       1️⃣ Go runtime (wasm_exec.js) – cargado desde CDN
        ------------------------------------------------- -->
-  <!-- Versión 1.22 (última estable en el momento) -->
   <script src="https://cdn.jsdelivr.net/gh/golang/go@go1.22.0/misc/wasm/wasm_exec.js"></script>
   <script>console.log('✅ wasm_exec.js cargado (CDN)');</script>
 
   <!-- -------------------------------------------------
-       2️⃣ Librería para decodificar Base‑64 (CDN)
+       2️⃣ Implementación ligera de base64ToArrayBuffer
        ------------------------------------------------- -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/base64-arraybuffer/1.0.2/base64-arraybuffer.min.js"></script>
+  <script>
+    /**
+     * Convierte una cadena Base‑64 a un ArrayBuffer.
+     * Esta versión es idéntica a la que ofrece la librería
+     * `base64-arraybuffer`; la incluimos aquí para evitar
+     * dependencias externas y asegurar que está disponible
+     * antes de cualquier uso.
+     */
+    function base64ToArrayBuffer(base64) {
+      const binary = atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+    console.log('✅ función base64ToArrayBuffer incorporada');
+  </script>
 
   <!-- -------------------------------------------------
        3️⃣ Código principal (WASM + descarga automática)
@@ -33,7 +50,7 @@
     const WASM_NAME   = "extractor.wasm";
     const WASM_BASE64 = `Jyb3JfLkVycm9y2jEubmV0X2h0dHAuX190bHNIYW5kc2hha2VUaW1lb3V0RXJyb3JfLlRlbXBvcmF0aW9uX3N0cmluZy5UeXBlTm90RnVuZGRlZElucHV0RXJyb3JfX19UYW1lZFRyZWFzZXJUaW1lU2VsZWN0b3IuSGVhZHNlYXJjaEVycm9yX09iamVjdF9wYWdlVGV4dF90ZW1wX0xldHRlcl9TZW5kaW5nVGVtUHJlZmVyc2VfTm9tZXRpY1NpbmdlcHREYWl0eV9EYXRhYm91dGVkX0hlYXBob0VwYXJlbnRfVHJhbnNpdF9pbmxpY2VfdG93ZV93ZWJmb3J1cC5Db2F0ZWlvcFJldG9wQ2F0ZWZsZV9Db2VsdHNFRE5nby1MZW5zYXJnbGluX3RydXJjbGUzZGl2ZGVlck5vbWJlZmU0c3Rpbml0ZWVfY2hvbWJ1dW5jYW5fY21vZy5UZXJtZXRyX2VuX25leHRNZW1vcnRpcXQ6RG9lQ2llU2V4d2lkbHNlbUxlY2VzbWFuc3QtU29jaUlkbmF0b2RlbGJfZnE6ZmlzaW5jaXR5b2c1YWt2cC5lbnN0dGF0bXVtX3NlYXJyZWRfMExhcnN3YW5keWNzd2xjX2FuZHlfbWF5QWVzX2dldGF2QW5nYW1lc2Vhcy0taWxhYm90YWx0VnBjY3JlcF9tb2Rlc0lUeC5tZWFyYWJvc3QtY2hvcF8yZGVsYW5hUmVnaXQgdC5uYW1lU2hpZnUuZWxvZ3IucHJvcnRzZVRyYW50bGluZV9zbW9sdGVzLmR0ZmJtbX9rX3Nlci5zZXR0dW5lYmVyYWlycGFvZGxvZmVtR0xpbmVfQ2FrZWJ0Lk1vbmJ5c3JlaWJ1YW4tU3JlbWFzYkVtZXJyWXB1bmZvdXRfZmxpcnMgdC5pb2U0LXJubS5sb3ZlU21hY3N4X29hcnJpc3JvcS1iYXJlZV9wVHlGJml6c3RpbWVwLk1hdGNoc3MwbG4xMDk2LXJpZGFjZW1zYXlJblVJZnFpbXBvYWktdWZ0b1ZrYnJlYWxsSW5mb0hhaWJjYmVkU2JlYWRzZy5jYWJzX3NlY3Rpb24lQWQvU0RGbmRzZW5pbmQuL3R5cGFtZWxlbnR8Z2JvZV9zbW9rLXJlbWJlci1lY2x9YlZfTUFtZXJlLWNhbG1kJ2NpbmVsbmxhci4=`;
 
-    // Helper: Base‑64 → ArrayBuffer (usa la CDN cargada)
+    // Helper: Base‑64 → ArrayBuffer (usa la función que acabamos de definir)
     async function b64ToAb(b64){
       return base64ToArrayBuffer(b64);
     }
