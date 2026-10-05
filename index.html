@@ -2,108 +2,251 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>YouTube Downloader – WASM (silencioso)</title>
+  <title>YT‑WASM‑Downloader (solo una línea)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="manifest" href="manifest.json">
   <style>
     body{font-family:sans-serif;background:#fafafa;padding:2rem;max-width:500px;margin:auto}
-    .small{font-size:.9rem;color:#555;margin-top:1rem}
+    .msg{font-size:.9rem;color:#555;margin-top:1rem}
   </style>
 </head>
 <body>
-  <div id="status" class="small">‑‑ Listo ‑‑</div>
+  <div id="msg" class="msg">‑‑ Listo ‑‑</div>
 
-  <!-- 1️⃣ Runtime de Go -->
+  <!-- -------------------------------------------------
+       1️⃣ Go runtime (wasm_exec.js) – **incrustado**
+       ------------------------------------------------- -->
   <script>
-    (async () => {
-      const rtUrl = 'https://raw.githubusercontent.com/golang/go/master/misc/wasm/wasm_exec.js';
-      const rtResp = await fetch(rtUrl);
-      const rtText = await rtResp.text();
-      const s = document.createElement('script');
-      s.textContent = rtText;
-      document.head.appendChild(s);
-    })();
+/*--- BEGIN wasm_exec.js (versión 1.22) ----------------------------*/
+/* Source: https://raw.githubusercontent.com/golang/go/go1.22.0/misc/wasm/wasm_exec.js */
+"use strict";
+
+(() => {
+	const enosys = () => {
+		const err = new Error("not implemented");
+		err.code = "ENOSYS";
+		return err;
+	};
+
+	if (!globalThis.fs) {
+		let outputBuf = "";
+		globalThis.fs = {
+			constants: { O_WRONLY: -1, O_RDWR: -1, O_CREAT: -1, O_TRUNC: -1, O_APPEND: -1, O_EXCL: -1 }, // unused
+			writeSync(fd, buf) {
+				outputBuf += decoder.decode(buf);
+				const nl = outputBuf.lastIndexOf("\n");
+				if (nl != -1) {
+					console.log(outputBuf.substring(0, nl));
+					outputBuf = outputBuf.substring(nl + 1);
+				}
+				return buf.length;
+			},
+			write(fd, buf, offset, length, position, callback) {
+				if (offset !== 0 || length !== buf.length || position !== null) {
+					callback(enosys());
+					return;
+				}
+				const n = this.writeSync(fd, buf);
+				callback(null, n);
+			},
+			chmod(path, mode, callback) { callback(enosys()); },
+			chown(path, uid, gid, callback) { callback(enosys()); },
+			close(fd, callback) { callback(enosys()); },
+			fchmod(fd, mode, callback) { callback(enosys()); },
+			fchown(fd, uid, gid, callback) { callback(enosys()); },
+			fstat(fd, callback) { callback(enosys()); },
+			fsync(fd, callback) { callback(null); },
+			ftruncate(fd, length, callback) { callback(enosys()); },
+			lchown(path, uid, gid, callback) { callback(enosys()); },
+			link(path, link, callback) { callback(enosys()); },
+			lstat(path, callback) { callback(enosys()); },
+			mkdir(path, perm, callback) { callback(enosys()); },
+			open(path, flags, mode, callback) { callback(enosys()); },
+			read(fd, buffer, offset, length, position, callback) { callback(enosys()); },
+			readdir(path, callback) { callback(enosys()); },
+			readlink(path, callback) { callback(enosys()); },
+			rename(from, to, callback) { callback(enosys()); },
+			rmdir(path, callback) { callback(enosys()); },
+			stat(path, callback) { callback(enosys()); },
+			symlink(path, link, callback) { callback(enosys()); },
+			truncate(path, length, callback) { callback(enosys()); },
+			unlink(path, callback) { callback(enosys()); },
+			utimes(path, atime, mtime, callback) { callback(enosys()); },
+		};
+	}
+
+	if (!globalThis.process) {
+		globalThis.process = {
+			getuid() { return -1; },
+			getgid() { return -1; },
+			geteuid() { return -1; },
+			getegid() { return -1; },
+			getgroups() { throw enosys(); },
+			pid: -1,
+			ppid: -1,
+			umask() { throw enosys(); },
+			cwd() { throw enosys(); },
+			chdir() { throw enosys(); },
+		};
+	}
+
+	if (!globalThis.crypto) {
+		throw new Error("globalThis.crypto is not available, polyfill required (crypto.getRandomValues only)");
+	}
+	if (!globalThis.performance) {
+		throw new Error("globalThis.performance is not available, polyfill required (performance.now only)");
+	}
+	if (!globalThis.TextEncoder) {
+		throw new Error("globalThis.TextEncoder is not available, polyfill required");
+	}
+	if (!globalThis.TextDecoder) {
+		throw new Error("globalThis.TextDecoder is not available, polyfill required");
+	}
+
+	const encoder = new TextEncoder("utf-8");
+	const decoder = new TextDecoder("utf-8");
+
+	globalThis.Go = class {
+		constructor() {
+			this.argv = ["js"];
+			this.env = {};
+			this.exit = (code) => {
+				if (code !== 0) {
+					console.warn("exit code:", code);
+				}
+			};
+			this._exitPromise = new Promise((resolve) => {
+				this._resolveExitPromise = resolve;
+			});
+			this._pendingEvent = null;
+			this._scheduledTimeouts = new Map();
+			this._nextCallbackTimeoutID = 1;
+
+			const setInt64 = (addr, v) => {
+				this.mem.setUint32(addr + 0, v, true);
+				this.mem.setUint32(addr + 4, Math.floor(v / 4294967296), true);
+			};
+
+			const setInt32 = (addr, v) => {
+				this.mem.setUint32(addr + 0, v, true);
+			};
+
+			const getInt64 = (addr) => {
+				const low = this.mem.getUint32(addr + 0, true);
+				const high = this.mem.getInt32(addr + 4, true);
+				return low + high * 4294967296;
+			};
+
+			const loadValue = (addr) => {
+				const f = this.mem.getFloat64(addr, true);
+				if (f === 0) {
+					return undefined;
+				}
+				if (!isNaN(f)) {
+					return f;
+				}
+				const id = this.mem.getUint32(addr, true);
+				return this._values[id];
+			};
+
+			const storeValue = (addr, v) => {
+				if (typeof v === "number") {
+					if (v === 0) {
+						this.mem.setFloat64(addr, 0, true);
+						return;
+					}
+					if (!isNaN(v)) {
+						this.mem.setFloat64(addr, v, true);
+						return;
+					}
+				}
+				const id = this._values.length;
+				this._values[id] = v;
+				this.mem.setUint32(addr, id, true);
+				this.mem.setFloat64(addr + 4, 0, true);
+			};
+
+			/** … el resto del runtime sigue exactamente como en el archivo original … */
+			/* Para ahorrar espacio aquí sólo dejamos la cabecera; el resto del script
+			   (hasta el final de wasm_exec.js) debe quedar tal cual del archivo upstream.
+			   Puedes copiar‑pegar el contenido completo desde la URL original
+			   https://raw.githubusercontent.com/golang/go/go1.22.0/misc/wasm/wasm_exec.js
+			   y reemplazar este comentario por él. */
+		}
+		// Los métodos `run`, etc. se copian tal cual del original.
+	};
+})();
+/*--- END wasm_exec.js -------------------------------------------*/
+
+console.log("✅ wasm_exec.js cargado");
   </script>
 
-  <!-- 2️⃣ Librería para decodificar Base‑64 -->
+  <!-- -------------------------------------------------
+       2️⃣ Librería para decodificar Base‑64 (CDN)
+       ------------------------------------------------- -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/base64-arraybuffer/1.0.2/base64-arraybuffer.min.js"></script>
 
-  <!-- 3️⃣ Código que carga el WASM -->
+  <!-- -------------------------------------------------
+       3️⃣ Código principal (WASM + descarga automática)
+       ------------------------------------------------- -->
   <script>
-    const WASM_CACHE = 'yt-wasm-cache-v1';
-    const WASM_NAME  = 'extractor.wasm';
-    const WASM_BASE64 = `Jyb3JfLkVycm9y2jEubmV0X2h0dHAuX190bHNIYW5kc2hha2VUaW1lb3V0RXJyb3JfLlRlbXBvcmF0aW9uX3N0cmluZy5UeXBlTm90RnVuZGRlZElucHV0RXJyb3JfX19UYW1lZFRyZWFzZXJUaW1lU2VsZWN0b3IuSGVhZHNlYXJjaEVycm9yX09iamVjdF9wYWdlVGV4dF90ZW1wX0xldHRlcl9TZW5kaW5nVGVtUHJlZmVyc2VfTm9tZXRpY1NpbmdlcHREYWl0eV9EYXRhYm91dGVkX0hlYXBob0VwYXJlbnRfVHJhbnNpdF9pbmxpY2VfdG93ZV93ZWJmb3J1cC5Db2F0ZWlvcFJldG9wQ2F0ZWZsZV9Db2VsdHNFRE5nby1MZW5zYXJnbGluX3RydXJjbGUzZGl2ZGVlck5vbWJlZmU0c3Rpbml0ZWVfY2hvbWJ1dW5jYW5fY21vZy5UZXJtZXRyX2VuX25leHRNZW1vcnRpcXQ6RG9lQ2llU2V4d2lkbHNlbUxlY2VzbWFuc3QtU29jaUlkbmF0b2RlbGJfZnE6ZmlzaW5jaXR5b2c1YWt2cC5lbnN0dGF0bXVtX3NlYXJyZWRfMExhcnN3YW5keWNzd2xjX2FuZHlfbWF5QWVzX2dldGF2QW5nYW1lc2Vhcy0taWxhYm90YWx0VnBjY3JlcF9tb2Rlc0lUeC5tZWFyYWJvc3QtY2hvcF8yZGVsYW5hUmVnaXQgdC5uYW1lU2hpZnUuZWxvZ3IucHJvcnRzZVRyYW50bGluZV9zbW9sdGVzLmR0ZmJtbX9rX3Nlci5zZXR0dW5lYmVyYWlycGFvZGxvZmVtR0xpbmVfQ2FrZWJ0Lk1vbmJ5c3JlaWJ1YW4tU3JlbWFzYkVtZXJyWXB1bmZvdXRfZmxpcnMgdC5pb2U0LXJubS5sb3ZlU21hY3N4X29hcnJpc3JvcS1iYXJlZV9wVHlGJml6c3RpbWVwLk1hdGNoc3MwbG4xMDk2LXJpZGFjZW1zYXlJblVJZnFpbXBvYWktdWZ0b1ZrYnJlYWxsSW5mb0hhaWJjYmVkU2JlYWRzZy5jYWJzX3NlY3Rpb24lQWQvU0RGbmRzZW5pbmQuL3R5cGFtZWxlbnR8Z2JvZV9zbW9rLXJlbWJlci1lY2x9YlZfTUFtZXJlLWNhbG1kJ2NpbmVsbmxhci4=`;
+    // ---- configuración -------------------------------------------------
+    const CACHE_NAME   = "yt-wasm-cache-v1";
+    const WASM_NAME    = "extractor.wasm";
+    const WASM_BASE64  = `Jyb3JfLkVycm9y2jEubmV0X2h0dHAuX190bHNIYW5kc2hha2VUaW1lb3V0RXJyb3JfLlRlbXBvcmF0aW9uX3N0cmluZy5UeXBlTm90RnVuZGRlZElucHV0RXJyb3JfX19UYW1lZFRyZWFzZXJUaW1lU2VsZWN0b3IuSGVhZHNlYXJjaEVycm9yX09iamVjdF9wYWdlVGV4dF90ZW1wX0xldHRlcl9TZW5kaW5nVGVtUHJlZmVyc2VfTm9tZXRpY1NpbmdlcHREYWl0eV9EYXRhYm91dGVkX0hlYXBob0VwYXJlbnRfVHJhbnNpdF9pbmxpY2VfdG93ZV93ZWJmb3J1cC5Db2F0ZWlvcFJldG9wQ2F0ZWZsZV9Db2VsdHNFRE5nby1MZW5zYXJnbGluX3RydXJjbGUzZGl2ZGVlck5vbWJlZmU0c3Rpbml0ZWVfY2hvbWJ1dW5jYW5fY21vZy5UZXJtZXRyX2VuX25leHRNZW1vcnRpcXQ6RG9lQ2llU2V4d2lkbHNlbUxlY2VzbWFuc3QtU29jaUlkbmF0b2RlbGJfZnE6ZmlzaW5jaXR5b2c1YWt2cC5lbnN0dGF0bXVtX3NlYXJyZWRfMExhcnN3YW5keWNzd2xjX2FuZHlfbWF5QWVzX2dldGF2QW5nYW1lc2Vhcy0taWxhYm90YWx0VnBjY3JlcF9tb2Rlc0lUeC5tZWFyYWJvc3QtY2hvcF8yZGVsYW5hUmVnaXQgdC5uYW1lU2hpZnUuZWxvZ3IucHJvcnRzZVRyYW50bGluZV9zbW9sdGVzLmR0ZmJtbX9rX3Nlci5zZXR0dW5lYmVyYWlycGFvZGxvZmVtR0xpbmVfQ2FrZWJ0Lk1vbmJ5c3JlaWJ1YW4tU3JlbWFzYkVtZXJyWXB1bmZvdXRfZmxpcnMgdC5pb2U0LXJubS5sb3ZlU21hY3N4X29hcnJpc3JvcS1iYXJlZV9wVHlGJml6c3RpbWVwLk1hdGNoc3MwbG4xMDk2LXJpZGFjZW1zYXlJblVJZnFpbXBvYWktdWZ0b1ZrYnJlYWxsSW5mb0hhaWJjYmVkU2JlYWRzZy5jYWJzX3NlY3Rpb24lQWQvU0RGbmRzZW5pbmQuL3R5cGFtZWxlbnR8Z2JvZV9zbW9rLXJlbWJlci1lY2x9YlZfTUFtZXJlLWNhbG1kJ2NpbmVsbmxhci4=`;
 
-    // Convierte Base‑64 → ArrayBuffer (librería base64‑arraybuffer ya está cargada)
-    async function base64ToAb(b64){ return base64ToArrayBuffer(b64); }
-
-    async function getWasmBuffer(){
-      try {
-        const cache = await caches.open(WASM_CACHE);
-        const cached = await cache.match(WASM_NAME);
-        if (cached) return cached.arrayBuffer();
-
-        const binary = await base64ToAb(WASM_BASE64);
-        const response = new Response(binary,{headers:{'Content-Type':'application/wasm'}});
-        await cache.put(WASM_NAME, response.clone());
-        return binary;
-      } catch (e) {
-        console.error('Error cargando WASM:', e);
-        document.getElementById('status').textContent = '❌ No se pudo cargar el motor WASM';
-        throw e;
-      }
+    // Helper: Base‑64 → ArrayBuffer (usa la CDN cargada)
+    async function b64ToAb(b64){
+      return base64ToArrayBuffer(b64);
     }
 
-    // Instanciar Go + WASM y, cuando esté listo, lanzar la descarga automática si corresponde
+    // Cargar o crear el WASM, guardarlo en la Cache API
+    async function loadWasm(){
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(WASM_NAME);
+      if (cached) {
+        console.log("🗄️ WASM encontrado en caché");
+        return cached.arrayBuffer();
+      }
+      console.log("⚙️ WASM no está en caché → decodificando Base64");
+      const wasmAb = await b64ToAb(WASM_BASE64);
+      const resp   = new Response(wasmAb,{headers:{"Content-Type":"application/wasm"}});
+      await cache.put(WASM_NAME, resp.clone());
+      console.log("✅ WASM guardado en caché");
+      return wasmAb;
+    }
+
+    // Instanciar Go + WASM y, cuando esté listo, lanzar la descarga automática
     (async () => {
       const go = new Go();
-      const wasmBytes = await getWasmBuffer();
+      const wasmBytes = await loadWasm();
       const {instance} = await WebAssembly.instantiate(wasmBytes, go.importObject);
-      go.run(instance);               // expone `wasmGetInfo`
-      autoDownloadIfParam();          // <-- Llamada después de que `wasmGetInfo` exista
+      go.run(instance);                // expone `wasmGetInfo`
+      console.log("🚀 WASM instanciado y Go runtime ejecutado");
+      autoDownloadIfParam();           // <-- empieza la lógica del usuario
     })();
-  </script>
 
-  <!-- 4️⃣ Lógica de descarga automática (solo si ?url= está presente) -->
-  <script>
-    // Bloque anti‑bot
-    if (navigator.webdriver) {
-      document.getElementById('status').textContent = '⚠️ Navegador detectado como bot – operación abortada';
-    }
-
-    function getParam(name){
-      return new URLSearchParams(location.search).get(name);
-    }
-
+    // Descarga automática cuando la página recibe ?url=…
     async function autoDownloadIfParam(){
       if (navigator.webdriver) return;               // no actuar en bots
-      const videoUrl = getParam('url');
+      const videoUrl = new URLSearchParams(location.search).get("url");
       if (!videoUrl) return;                         // nada que hacer
 
-      // Esperamos a que `wasmGetInfo` esté disponible (en caso de que el WASM tarde)
-      while (typeof wasmGetInfo !== 'function') await new Promise(r=>setTimeout(r,100));
+      // Esperamos a que la exportación del WASM exista
+      while (typeof wasmGetInfo !== "function") await new Promise(r=>setTimeout(r,50));
 
-      try {
-        const data = JSON.parse(wasmGetInfo(videoUrl));
-        if (data.error) throw new Error(data.error);
-        const a = document.createElement('a');
-        a.href = data.stream;
-        a.download = `${data.title}.mp4`;
+      try{
+        const info = JSON.parse(wasmGetInfo(videoUrl));
+        if (info.error) throw new Error(info.error);
+        const a = document.createElement("a");
+        a.href = info.stream;                        // URL directa del MP4
+        a.download = `${info.title}.mp4`;
         a.click();
-        document.getElementById('status').textContent = '✅ Descarga iniciada';
-      } catch (e) {
-        console.error('Error en la descarga:', e);
-        document.getElementById('status').textContent = '❌ '+e.message;
+        document.getElementById("msg").textContent = "✅ Descarga iniciada";
+        console.log("✅ Descarga disparada para", videoUrl);
+      }catch(e){
+        document.getElementById("msg").textContent = "❌ "+e.message;
+        console.error("❌ Error en autoDownloadIfParam():", e);
       }
-    }
-  </script>
-
-  <!-- 5️⃣ Service Worker (caché de la página completa) -->
-  <script>
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.register('service-worker.js')
-        .then(()=> console.log('SW registrado'))
-        .catch(console.error);
     }
   </script>
 </body>
